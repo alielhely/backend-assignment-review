@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://database:5432/deliveries
+    username: admin
+    password: admin
+
+invoice-service.url: "http://mock-api:8000"
