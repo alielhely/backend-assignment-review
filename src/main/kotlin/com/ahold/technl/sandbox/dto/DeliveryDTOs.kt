@@ -9,19 +9,19 @@ import java.time.Instant
 import java.util.UUID
 
 data class CreateDeliveryRequest(
-    @field:NotBlank(message = "Vehicle ID must not be blank")
-    val vehicleId: String,
+    @field:NotBlank(message = "Vehicle ID must not be null nor blank")
+    val vehicleId: String?= null,
 
-    @field:NotBlank(message = "Address must not be blank")
-    val address: String,
+    @field:NotBlank(message = "Address must not be null nor blank")
+    val address: String?= null,
 
-    @field:NotNull(message = "Status must not be blank")
-    val startedAt: Instant,
+    @field:NotNull(message = "startedAt must not be null nor blank")
+    val startedAt: Instant?= null,
 
     val finishedAt: Instant? = null,
 
-    @field:NotNull(message = "Status must not be blank")
-    val status: DeliveryStatus
+    @field:NotNull(message = "Status must not be null nor blank")
+    val status: DeliveryStatus?= null
 
     )
 

@@ -19,11 +19,11 @@ class DeliveryService(
         validateDeliveryRequest(request)
 
         val delivery = Delivery(
-            vehicleId = request.vehicleId,
-            address = request.address,
-            startedAt = request.startedAt,
+            vehicleId = request.vehicleId!!,
+            address = request.address!!,
+            startedAt = request.startedAt!!,
             finishedAt = request.finishedAt,
-            status = request.status
+            status = request.status!!
         )
 
         val saved = deliveryRepository.save(delivery)
@@ -31,7 +31,7 @@ class DeliveryService(
     }
 
     private fun validateDeliveryRequest(request: CreateDeliveryRequest) {
-        when (request.status) {
+        when (request.status ?: throw InvalidDeliveryStateException("Status must not be null nor blank")) {
             DeliveryStatus.IN_PROGRESS -> {
                 if (request.finishedAt != null) {
                     throw InvalidDeliveryStateException(
