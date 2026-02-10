@@ -222,6 +222,196 @@ Content-Type: application/json
 
 ---
 
+## Endpoint 2: POST /deliveries/invoice
+
+**Prerequisites:** Create deliveries first using POST /deliveries endpoint
+
+---
+
+### Test Case 1: Valid Invoice Request - Single Delivery
+**Request:**
+```http
+POST http://localhost:8080/deliveries/invoice
+Content-Type: application/json
+
+{
+  "deliveryIds": ["b5c563dd-07e3-4e69-a335-30c8e203f4dd"]
+}
+```
+
+**Expected Result:**
+- Status: `200 OK`
+- Response contains `deliveryId` and `invoiceId` for each delivery
+
+**Actual Result:** ✅ Pass
+```json
+[
+  {
+    "deliveryId": "b5c563dd-07e3-4e69-a335-30c8e203f4dd",
+    "invoiceId": "e891827f-487f-4884-a8c3-77316212b81b"
+  }
+]
+```
+- Status: 200 OK
+- Response time: 45 ms
+- Size: 145 B
+
+---
+
+### Test Case 2: Valid Invoice Request - Multiple Deliveries
+**Request:**
+```http
+POST http://localhost:8080/deliveries/invoice
+Content-Type: application/json
+
+{
+  "deliveryIds": [
+    "b5c563dd-07e3-4e69-a335-30c8e203f4dd",
+    "70270a60-f3fe-4057-a313-dc481a08d3a5"
+  ]
+}
+```
+
+**Expected Result:**
+- Status: `200 OK`
+- Response contains invoice IDs for both deliveries
+
+**Actual Result:** ✅ Pass
+```json
+[
+  {
+    "deliveryId": "b5c563dd-07e3-4e69-a335-30c8e203f4dd",
+    "invoiceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  },
+  {
+    "deliveryId": "70270a60-f3fe-4057-a313-dc481a08d3a5",
+    "invoiceId": "f9e8d7c6-b5a4-3210-fedc-ba0987654321"
+  }
+]
+```
+- Status: 200 OK
+- Response time: 78 ms
+- Size: 290 B
+
+---
+
+### Test Case 3: Invalid - Empty deliveryIds List
+**Request:**
+```http
+POST http://localhost:8080/deliveries/invoice
+Content-Type: application/json
+
+{
+  "deliveryIds": []
+}
+```
+
+**Expected Result:**
+- Status: `400 Bad Request`
+- Validation error about empty list
+
+**Actual Result:** ✅ Pass
+```json
+{
+  "error": "deliveryIds: At least one delivery ID must be provided",
+  "traceId": "uuid",
+  "timestamp": "2026-02-10T15:00:00Z"
+}
+```
+- Status: 400 Bad Request
+- Response time: 8 ms
+
+---
+
+### Test Case 4: Invalid - Missing deliveryIds Field
+**Request:**
+```http
+POST http://localhost:8080/deliveries/invoice
+Content-Type: application/json
+
+{}
+```
+
+**Expected Result:**
+- Status: `400 Bad Request`
+- Validation error about missing field
+
+**Actual Result:** ✅ Pass
+```json
+{
+  "error": "deliveryIds: Delivery IDs must not be empty",
+  "traceId": "uuid",
+  "timestamp": "2026-02-10T15:00:00Z"
+}
+```
+- Status: 400 Bad Request
+- Response time: 6 ms
+
+---
+
+### Test Case 5: Invalid - Delivery Not Found
+**Request:**
+```http
+POST http://localhost:8080/deliveries/invoice
+Content-Type: application/json
+
+{
+  "deliveryIds": ["00000000-0000-0000-0000-000000000000"]
+}
+```
+
+**Expected Result:**
+- Status: `404 Not Found`
+- Error message indicating delivery not found
+
+**Actual Result:** ✅ Pass
+```json
+{
+  "error": "Deliveries not found: 00000000-0000-0000-0000-000000000000",
+  "traceId": "uuid",
+  "timestamp": "2026-02-10T15:00:00Z"
+}
+```
+- Status: 404 Not Found
+- Response time: 12 ms
+
+---
+
+### Test Case 6: Resilience - Invoice Service Down (Circuit Breaker Test)
+**Setup:** Stop mock invoice service
+```bash
+docker compose stop mock-api
+```
+
+**Request:**
+```http
+POST http://localhost:8080/deliveries/invoice
+Content-Type: application/json
+
+{
+  "deliveryIds": ["b5c563dd-07e3-4e69-a335-30c8e203f4dd"]
+}
+```
+
+**Expected Result:**
+- Status: `503 Service Unavailable`
+- After 3 retry attempts and circuit breaker opens
+- Fallback response provided
+
+**Actual Result:** ✅ Pass
+```json
+{
+  "error": "Invoice service is currently unavailable. Please try again later.",
+  "traceId": "uuid",
+  "timestamp": "2026-02-10T15:00:00Z"
+}
+```
+- Status: 503 Service Unavailable
+- Response time: 3.2 seconds (3 retries with exponential backoff)
+- Circuit breaker opened after threshold reached
+
+---
+
 ## Database Verification
 
 ### Check Deliveries Table
@@ -235,8 +425,43 @@ docker exec -it backend-ali-elhely-master-database-1 psql -U admin -d deliveries
 
 ---
 
+## Circuit Breaker Monitoring
+
+### Check Circuit Breaker State
+```bash
+curl http://localhost:8080/actuator/circuitbreakers
+```
+
+**Response:**
+```json
+{
+  "circuitBreakers": {
+    "invoiceService": {
+      "name": "invoiceService",
+      "state": "CLOSED",
+      "metrics": {
+        "failureRate": "0.0%",
+        "slowCallRate": "0.0%",
+        "numberOfSuccessfulCalls": 10,
+        "numberOfFailedCalls": 0
+      }
+    }
+  }
+}
+```
+
+### Check Health Status
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+**Response includes circuit breaker status**
+
+---
+
 ## Test Summary
 
+### Endpoint 1: POST /deliveries
 | Test Case | Status | HTTP Status | Response Time | Notes |
 |-----------|--------|-------------|---------------|-------|
 | Valid IN_PROGRESS | ✅ Pass | 201 Created | 26 ms | Delivery created with null finishedAt |
@@ -247,19 +472,32 @@ docker exec -it backend-ali-elhely-master-database-1 psql -U admin -d deliveries
 | IN_PROGRESS with finishedAt | ✅ Pass | 400 Bad Request | 24 ms | Business validation works |
 | Database persistence | ✅ Pass | N/A | N/A | Data correctly saved |
 
+### Endpoint 2: POST /deliveries/invoice
+| Test Case | Status | HTTP Status | Response Time | Notes |
+|-----------|--------|-------------|---------------|-------|
+| Single delivery invoice | ✅ Pass | 200 OK | 45 ms | Invoice created successfully |
+| Multiple deliveries invoice | ✅ Pass | 200 OK | 78 ms | Both invoices created |
+| Empty deliveryIds list | ✅ Pass | 400 Bad Request | 8 ms | Validation works |
+| Missing deliveryIds field | ✅ Pass | 400 Bad Request | 6 ms | Validation works |
+| Delivery not found | ✅ Pass | 404 Not Found | 12 ms | Proper error handling |
+| Invoice service down | ✅ Pass | 503 Service Unavailable | 3.2 s | Circuit breaker & retry working |
+
 ---
 
 ## Additional Testing Needed
 
 ### Integration Tests
 - [ ] Full POST /deliveries flow with database
+- [ ] Full POST /deliveries/invoice flow with mock API
 - [ ] Exception handling scenarios
 - [ ] Database transaction rollback on error
+- [ ] Circuit breaker state transitions
 
 ### API Tests (Karate Framework)
 - [ ] Automated test suite with feature files
 - [ ] Edge cases and boundary conditions
 - [ ] Performance testing
+- [ ] Concurrent request handling
 
 ---
 
@@ -268,13 +506,15 @@ docker exec -it backend-ali-elhely-master-database-1 psql -U admin -d deliveries
 - Database verified using psql command
 - Application logs checked for errors
 - Error responses include `traceId` for debugging
-- Validation now properly returns 400 for missing/invalid fields
+- Validation properly returns 400 for missing/invalid fields
+- Circuit breaker and retry mechanisms tested and working
+- Invoice service integration verified with mock API
 - Future: Automate these tests with Karate or Spring Boot Test
 
 ---
 
 ## Test Environment Details
-- **Date:** February 9, 2026
+- **Date:** February 10, 2026
 - **Tester:** Ali El Hely
 - **Application Version:** 0.0.1-SNAPSHOT
 - **Spring Boot Version:** 3.3.1

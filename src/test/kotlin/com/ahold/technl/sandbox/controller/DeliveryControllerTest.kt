@@ -2,7 +2,11 @@ package com.ahold.technl.sandbox.controller
 
 import com.ahold.technl.sandbox.dto.CreateDeliveryRequest
 import com.ahold.technl.sandbox.dto.DeliveryResponse
+import com.ahold.technl.sandbox.dto.InvoiceRequest
+import com.ahold.technl.sandbox.dto.InvoiceResponse
+import com.ahold.technl.sandbox.exception.DeliveryNotFoundException
 import com.ahold.technl.sandbox.exception.InvalidDeliveryStateException
+import com.ahold.technl.sandbox.exception.InvoiceServiceException
 import com.ahold.technl.sandbox.model.DeliveryStatus
 import com.ahold.technl.sandbox.service.DeliveryService
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -15,9 +19,10 @@ import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 @WebMvcTest(DeliveryController::class)
 class DeliveryControllerTest {
@@ -229,5 +234,157 @@ class DeliveryControllerTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("Status")))
+    }
+
+    @Test
+    fun `POST deliveries invoice should return 200 for single delivery`() {
+        // Given
+        val deliveryId = UUID.randomUUID()
+        val invoiceId = UUID.randomUUID()
+        val request = InvoiceRequest(deliveryIds = listOf(deliveryId))
+
+        val response = listOf(
+            InvoiceResponse(
+                deliveryId = deliveryId,
+                invoiceId = invoiceId
+            )
+        )
+
+        whenever(deliveryService.sendInvoices(any())).thenReturn(response)
+
+        // When & Then
+        mockMvc.perform(
+            post("/deliveries/invoice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].deliveryId").value(deliveryId.toString()))
+            .andExpect(jsonPath("$[0].invoiceId").value(invoiceId.toString()))
+    }
+
+    @Test
+    fun `POST deliveries invoice should return 200 for multiple deliveries`() {
+        // Given
+        val deliveryId1 = UUID.randomUUID()
+        val deliveryId2 = UUID.randomUUID()
+        val invoiceId1 = UUID.randomUUID()
+        val invoiceId2 = UUID.randomUUID()
+
+        val request = InvoiceRequest(deliveryIds = listOf(deliveryId1, deliveryId2))
+
+        val response = listOf(
+            InvoiceResponse(deliveryId = deliveryId1, invoiceId = invoiceId1),
+            InvoiceResponse(deliveryId = deliveryId2, invoiceId = invoiceId2)
+        )
+
+        whenever(deliveryService.sendInvoices(any())).thenReturn(response)
+
+        // When & Then
+        mockMvc.perform(
+            post("/deliveries/invoice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].deliveryId").value(deliveryId1.toString()))
+            .andExpect(jsonPath("$[0].invoiceId").value(invoiceId1.toString()))
+            .andExpect(jsonPath("$[1].deliveryId").value(deliveryId2.toString()))
+            .andExpect(jsonPath("$[1].invoiceId").value(invoiceId2.toString()))
+    }
+
+    @Test
+    fun `POST deliveries invoice should return 400 when deliveryIds is empty`() {
+        // Given - empty list violates @Size(min = 1)
+        val request = mapOf("deliveryIds" to emptyList<UUID>())
+
+        // When & Then
+        mockMvc.perform(
+            post("/deliveries/invoice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").exists())
+            .andExpect(jsonPath("$.traceId").exists())
+            .andExpect(jsonPath("$.timestamp").exists())
+    }
+
+    @Test
+    fun `POST deliveries invoice should return 400 when deliveryIds is missing`() {
+        // Given
+        val request = mapOf<String, Any>()
+
+        // When & Then
+        mockMvc.perform(
+            post("/deliveries/invoice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").exists())
+    }
+
+    @Test
+    fun `POST deliveries invoice should return 404 when delivery not found`() {
+        // Given
+        val deliveryId = UUID.randomUUID()
+        val request = InvoiceRequest(deliveryIds = listOf(deliveryId))
+
+        whenever(deliveryService.sendInvoices(any()))
+            .thenThrow(DeliveryNotFoundException("Delivery not found: $deliveryId"))
+
+        // When & Then
+        mockMvc.perform(
+            post("/deliveries/invoice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error").value("Delivery not found: $deliveryId"))
+            .andExpect(jsonPath("$.traceId").exists())
+            .andExpect(jsonPath("$.timestamp").exists())
+    }
+
+    @Test
+    fun `POST deliveries invoice should return 404 when multiple deliveries not found`() {
+        // Given
+        val deliveryId1 = UUID.randomUUID()
+        val deliveryId2 = UUID.randomUUID()
+        val request = InvoiceRequest(deliveryIds = listOf(deliveryId1, deliveryId2))
+
+        whenever(deliveryService.sendInvoices(any()))
+            .thenThrow(DeliveryNotFoundException("Deliveries not found: $deliveryId1, $deliveryId2"))
+
+        // When & Then
+        mockMvc.perform(
+            post("/deliveries/invoice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("Deliveries not found")))
+    }
+
+    @Test
+    fun `POST deliveries invoice should return 503 when invoice service unavailable`() {
+        // Given
+        val deliveryId = UUID.randomUUID()
+        val request = InvoiceRequest(deliveryIds = listOf(deliveryId))
+
+        whenever(deliveryService.sendInvoices(any()))
+            .thenThrow(InvoiceServiceException("Invoice service is currently unavailable"))
+
+        // When & Then
+        mockMvc.perform(
+            post("/deliveries/invoice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))
+        )
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.error").value("Invoice service is currently unavailable. Please try again later."))
+            .andExpect(jsonPath("$.traceId").exists())
+            .andExpect(jsonPath("$.timestamp").exists())
     }
 }

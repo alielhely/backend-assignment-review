@@ -37,7 +37,7 @@ data class DeliveryResponse(
 data class InvoiceRequest(
     @field:NotEmpty(message = "Delivery IDs must not be empty")
     @field:Size(min = 1, message = "At least one delivery ID must be provided")
-    val deliveryIds: List<UUID>
+    val deliveryIds: List<UUID>? = null
 )
 
 data class InvoiceResponse(

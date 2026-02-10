@@ -1,6 +1,8 @@
 package com.ahold.technl.sandbox.controller
 
+import com.ahold.technl.sandbox.exception.DeliveryNotFoundException
 import com.ahold.technl.sandbox.exception.InvalidDeliveryStateException
+import com.ahold.technl.sandbox.exception.InvoiceServiceException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -56,6 +58,34 @@ class GlobalExceptionHandler {
             .status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(ErrorResponse(
                 error = "An unexpected error occurred. Please contact support with trace ID: $traceId",
+                traceId = traceId,
+                timestamp = Instant.now()
+            ))
+    }
+
+    @ExceptionHandler(DeliveryNotFoundException::class)
+    fun handleDeliveryNotFound(ex: DeliveryNotFoundException): ResponseEntity<ErrorResponse> {
+        val traceId = UUID.randomUUID().toString()
+        logger.warn("Delivery not found [traceId: $traceId]: ${ex.message}", ex)
+
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                error = ex.message ?: "Delivery not found",
+                traceId = traceId,
+                timestamp = Instant.now()
+            ))
+    }
+
+    @ExceptionHandler(InvoiceServiceException::class)
+    fun handleInvoiceServiceException(ex: InvoiceServiceException): ResponseEntity<ErrorResponse> {
+        val traceId = UUID.randomUUID().toString()
+        logger.error("Invoice service error [traceId: $traceId]: ${ex.message}", ex)
+
+        return ResponseEntity
+            .status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(ErrorResponse(
+                error = "Invoice service is currently unavailable. Please try again later.",
                 traceId = traceId,
                 timestamp = Instant.now()
             ))

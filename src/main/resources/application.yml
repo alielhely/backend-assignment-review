@@ -14,4 +14,26 @@ spring:
       hibernate:
         format_sql: true
 
+# Simple Resilience4j configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      invoiceService:
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        slidingWindowSize: 10
+
+  retry:
+    instances:
+      invoiceService:
+        maxAttempts: 3
+        waitDuration: 1s
+
+# Basic management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,circuitbreakers
+
 invoice-service.url: "http://localhost:8000"

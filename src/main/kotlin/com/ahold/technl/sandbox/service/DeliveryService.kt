@@ -1,7 +1,11 @@
 package com.ahold.technl.sandbox.service
 
+import com.ahold.technl.sandbox.client.InvoiceServiceClient
 import com.ahold.technl.sandbox.dto.CreateDeliveryRequest
 import com.ahold.technl.sandbox.dto.DeliveryResponse
+import com.ahold.technl.sandbox.dto.InvoiceRequest
+import com.ahold.technl.sandbox.dto.InvoiceResponse
+import com.ahold.technl.sandbox.exception.DeliveryNotFoundException
 import com.ahold.technl.sandbox.exception.InvalidDeliveryStateException
 import com.ahold.technl.sandbox.model.Delivery
 import com.ahold.technl.sandbox.model.DeliveryStatus
@@ -11,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional
 
 @Service
 class DeliveryService(
-    private val deliveryRepository: DeliveryRepository
+    private val deliveryRepository: DeliveryRepository,
+    private val invoiceServiceClient: InvoiceServiceClient
 ) {
 
     @Transactional
@@ -28,6 +33,31 @@ class DeliveryService(
 
         val saved = deliveryRepository.save(delivery)
         return saved.toResponse()
+    }
+
+    @Transactional
+    fun sendInvoices(request: InvoiceRequest): List<InvoiceResponse> {
+        val deliveryIds = request.deliveryIds
+            ?: throw InvalidDeliveryStateException("Delivery IDs must not be null")
+        val deliveries = deliveryRepository.findAllById(request.deliveryIds)
+        val foundIds = deliveries.map { it.id }.toSet()
+
+        val missingIds = request.deliveryIds.filterNot { it in foundIds }
+        if (missingIds.isNotEmpty()) {
+            throw DeliveryNotFoundException("Deliveries not found: ${missingIds.joinToString(", ")}")
+        }
+
+        val results = mutableListOf<InvoiceResponse>()
+        for (delivery in deliveries) {
+            val invoiceResponse = invoiceServiceClient.sendInvoice(delivery.id!!, delivery.address)
+
+            results.add(InvoiceResponse(
+                deliveryId = delivery.id!!,
+                invoiceId = invoiceResponse.id
+            ))
+        }
+
+        return results
     }
 
     private fun validateDeliveryRequest(request: CreateDeliveryRequest) {

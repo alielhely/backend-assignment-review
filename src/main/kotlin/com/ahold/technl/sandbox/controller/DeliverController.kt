@@ -20,4 +20,12 @@ class DeliveryController(
         val response = deliveryService.createDelivery(request)
         return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
+
+    @PostMapping("/invoice")
+    fun sendInvoices(
+        @Valid @RequestBody request: InvoiceRequest
+    ): ResponseEntity<List<InvoiceResponse>> {
+        val response = deliveryService.sendInvoices(request)
+        return ResponseEntity.ok(response)
+    }
 }
